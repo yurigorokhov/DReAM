@@ -29,18 +29,20 @@ namespace MindTouch.Data.Db {
 
         //--- Class Methods ---
         static int Main(string[] args) {
-            string dbusername = "root", dbname = "wikidb", dbserver = "localhost", dbpassword = null, updateDLL = null, targetVersion = null, sourceVersion = null, customMethods = null;
+            string dbusername = "root", dbname = "wikidb", dbserver = "localhost", dbpassword = null, updateDLL = null, 
+                   targetVersion = null, sourceVersion = null, customMethods = null, listDatabases;
             int dbport = 3306, exit = 0;
             bool showHelp = false, dryrun = false, verbose = false;
 
             // set command line options
             var options = new Options() {
-                { "p=|dbpassword=", "Database password", p => dbpassword = p},
-                { "v=|version=", "Target Version", v => targetVersion = v},
-                { "b=|sversion=", "Source Version", b => sourceVersion = b},
-                { "u=|dbusername=", "Database user name (default: root)", u => dbusername = u},
-                { "d=|dbname=", "Database name (default: wikidb)", p => dbname = p},
-                { "s=|dbserver=", "Database server (default: localhost)", s => dbserver = s},
+                { "p=|dbpassword=", "Database password", p => dbpassword = p },
+                { "v=|version=", "Target Version", v => targetVersion = v },
+                { "b=|sversion=", "Source Version", b => sourceVersion = b },
+                { "u=|dbusername=", "Database user name (default: root)", u => dbusername = u },
+                { "d=|dbname=", "Database name (default: wikidb)", p => dbname = p },
+                { "s=|dbserver=", "Database server (default: localhost)", s => dbserver = s },
+                { "l=|listdb" , "List of databases separated by EOF", l => listDatabases = l},
                 { "n=|port=", "Database port (default: 3306)", n => {dbport = Int32.Parse(n);}},
                 { "c=|custom", "Custom Methods to invoke (comma separated list)", c => {customMethods = c;}},
                 { "i|info", "Display verbose information (default: false)", i => {verbose = true;}},
@@ -69,7 +71,9 @@ namespace MindTouch.Data.Db {
 
                 // Check Arguments
                 CheckArg(updateDLL, "No DLL file was specified");
-                CheckArg(dbpassword, "No Database password specified");
+                if(!string.IsNullOrEmpty(dbname)) {
+                    CheckArg(dbpassword, string.Format("No Database password specified for database {0}", dbname));
+                }
 
                 // If there are no custom methods specified we need a version number
                 if(customMethods == null) {
@@ -90,44 +94,49 @@ namespace MindTouch.Data.Db {
                     PrintErrorAndExit("You entered an incorrect version numner.");
                 }
 
-                // Execute custom methods
-                if(customMethods != null) {
-                    var methods = customMethods.Split(',');
-                    foreach(var method in methods) {
-                        if(verbose) {
-                            Console.WriteLine(String.Format("Executing custom method: {0}", method));
-                        }
-                        if(!dryrun) {
-                            mysqlSchemaUpdater.ExecuteCustomMethod(method.Trim(), dllAssembly);
-                        }
-                    }
-                }
+                // Run update
+                runUpdate(mysqlSchemaUpdater, dllAssembly, customMethods, targetVersion, verbose, dryrun);
 
-                // Execute update methods
-                if(targetVersion != null) {
-                    mysqlSchemaUpdater.LoadMethods(dllAssembly);
-                    var methods = mysqlSchemaUpdater.GetMethods();
-
-                    // Execute each method
-                    foreach(var method in methods) {
-                        if(verbose) {
-                            Console.WriteLine(String.Format("Executing method: {0}", method));
-                        }
-                        if(!dryrun) {
-                            try { mysqlSchemaUpdater.TestConnection(); }
-                            catch (Exception) {
-                                System.Threading.Thread.Sleep(5000);
-                                mysqlSchemaUpdater.TestConnection();
-                            }
-                            mysqlSchemaUpdater.ExecuteMethod(method);
-                        }
-                    }
-                }
             }
             else {
                 ShowHelp(options);
             } 
             return exit;
+        }
+
+        private static void runUpdate(MysqlDataUpdater site, Assembly dllAssembly, string customMethods,string targetVersion, bool verbose, bool dryrun) {
+            // Execute custom methods
+            if(customMethods != null) {
+                var methods = customMethods.Split(',');
+                foreach(var method in methods) {
+                    if(verbose) {
+                        Console.WriteLine(String.Format("Executing custom method: {0}", method));
+                    }
+                    if(!dryrun) {
+                        site.ExecuteCustomMethod(method.Trim(), dllAssembly);
+                    }
+                }
+            }
+
+            // Execute update methods
+            if(targetVersion != null) {
+                site.LoadMethods(dllAssembly);
+                var methods = site.GetMethods();
+
+                // Execute each method
+                foreach(var method in methods) {
+                    if(verbose) {
+                        Console.WriteLine(String.Format("Executing method: {0}", method));
+                    }
+                    if(!dryrun) {
+                        try { site.TestConnection(); } catch(Exception) {
+                            System.Threading.Thread.Sleep(5000);
+                            site.TestConnection();
+                        }
+                        site.ExecuteMethod(method);
+                    }
+                }
+            }
         }
 
         private static void ShowHelp(Options p) {
