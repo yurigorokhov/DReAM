@@ -20,6 +20,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -27,12 +28,39 @@ using System.Reflection;
 namespace MindTouch.Data.Db {
     class UpdateDb {
 
+        internal class DBConnection {
+            public string dbServer;
+            public string dbName;
+            public string dbUsername;
+            public string dbPassword;
+
+            // Parses a string of format : dbName[;dbServer;dbUsername;dbPassword]
+            public static DBConnection Parse(string configString, string defaultServer, string defaultUser, string defaultPassword) {
+                if(string.IsNullOrEmpty(configString)) {
+                    return null;
+                }
+                var items = configString.Split(';');
+                var con = new DBConnection();
+                con.dbName = items[0];
+                if(items.Length == 0) {
+                    con.dbServer = defaultServer;
+                    con.dbUsername = defaultUser;
+                    con.dbPassword = defaultPassword;
+                } else if(items.Length == 4) {
+                    con.dbServer = items[1];
+                    con.dbUsername = items[2];
+                    con.dbPassword = items[3];
+                }
+                return con;
+            }   
+        }
+
         //--- Class Methods ---
         static int Main(string[] args) {
             string dbusername = "root", dbname = "wikidb", dbserver = "localhost", dbpassword = null, updateDLL = null, 
-                   targetVersion = null, sourceVersion = null, customMethods = null, listDatabases;
+                   targetVersion = null, sourceVersion = null, customMethods = null;
             int dbport = 3306, exit = 0;
-            bool showHelp = false, dryrun = false, verbose = false;
+            bool showHelp = false, dryrun = false, verbose = false, listDatabases = false;
 
             // set command line options
             var options = new Options() {
@@ -42,7 +70,7 @@ namespace MindTouch.Data.Db {
                 { "u=|dbusername=", "Database user name (default: root)", u => dbusername = u },
                 { "d=|dbname=", "Database name (default: wikidb)", p => dbname = p },
                 { "s=|dbserver=", "Database server (default: localhost)", s => dbserver = s },
-                { "l=|listdb" , "List of databases separated by EOF", l => listDatabases = l},
+                { "l=|listdb" , "List of databases separated by EOF", l => listDatabases = true},
                 { "n=|port=", "Database port (default: 3306)", n => {dbport = Int32.Parse(n);}},
                 { "c=|custom", "Custom Methods to invoke (comma separated list)", c => {customMethods = c;}},
                 { "i|info", "Display verbose information (default: false)", i => {verbose = true;}},
@@ -82,7 +110,22 @@ namespace MindTouch.Data.Db {
 
                 // Begin Parsing DLL
                 var dllAssembly = Assembly.LoadFile(updateDLL);
-               
+                        
+                // Read list of databases if listDatabases is true
+                var databaseList = new List<DBConnection>();
+                if(listDatabases) {
+                    
+                    // Read the db names from input
+                    // format: dbname[;dbserver;dbuser;dbpassword]
+                    string line = null;
+                    while(!string.IsNullOrEmpty(line = Console.ReadLine())) {
+                        var connection = DBConnection.Parse(line, dbserver, dbusername, dbpassword);
+                        if(connection != null) {
+                            databaseList.Add(connection);
+                        }
+                    }
+                }
+
                 // Instatiate Mysql Upgrade class
                 MysqlDataUpdater mysqlSchemaUpdater = null;
                 try {
