@@ -28,13 +28,27 @@ using System.Reflection;
 namespace MindTouch.Data.Db {
     class UpdateDb {
 
+        /// <summary>
+        /// Class to store database connection information
+        /// </summary>
         internal class DBConnection {
             public string dbServer;
             public string dbName;
             public string dbUsername;
             public string dbPassword;
 
-            // Parses a string of format : dbName[;dbServer;dbUsername;dbPassword]
+            /// <summary>
+            /// Parse a config string of format dbname[;dbserver;dbuser;dbpassword]
+            /// </summary>
+            /// <param name="configString"></param>
+            /// Config String of the proper format
+            /// <param name="defaultServer"></param>
+            /// Default server
+            /// <param name="defaultUser"></param>
+            /// Default user
+            /// <param name="defaultPassword"></param>
+            /// Default password
+            /// <returns></returns>
             public static DBConnection Parse(string configString, string defaultServer, string defaultUser, string defaultPassword) {
                 if(string.IsNullOrEmpty(configString)) {
                     return null;
@@ -42,7 +56,7 @@ namespace MindTouch.Data.Db {
                 var items = configString.Split(';');
                 var con = new DBConnection();
                 con.dbName = items[0];
-                if(items.Length == 0) {
+                if(items.Length == 1) {
                     con.dbServer = defaultServer;
                     con.dbUsername = defaultUser;
                     con.dbPassword = defaultPassword;
@@ -59,8 +73,9 @@ namespace MindTouch.Data.Db {
         static int Main(string[] args) {
             string dbusername = "root", dbname = "wikidb", dbserver = "localhost", dbpassword = null, updateDLL = null, 
                    targetVersion = null, sourceVersion = null, customMethods = null;
-            int dbport = 3306, exit = 0;
+            int dbport = 3306, exit = 0, errors = 0;
             bool showHelp = false, dryrun = false, verbose = false, listDatabases = false;
+            var errorStrings = new List<string>();
 
             // set command line options
             var options = new Options() {
@@ -70,11 +85,11 @@ namespace MindTouch.Data.Db {
                 { "u=|dbusername=", "Database user name (default: root)", u => dbusername = u },
                 { "d=|dbname=", "Database name (default: wikidb)", p => dbname = p },
                 { "s=|dbserver=", "Database server (default: localhost)", s => dbserver = s },
-                { "l=|listdb" , "List of databases separated by EOF", l => listDatabases = true},
                 { "n=|port=", "Database port (default: 3306)", n => {dbport = Int32.Parse(n);}},
                 { "c=|custom", "Custom Methods to invoke (comma separated list)", c => {customMethods = c;}},
                 { "i|info", "Display verbose information (default: false)", i => {verbose = true;}},
-                { "f|dryrun", "Just display the methods that will be called, do not execute any of them. (default: false)", f => { dryrun = verbose = true;} },
+                { "f|dryrun", "Just display the methods that will be called, do not execute any of them. (default: false)", f => { dryrun = verbose = true;}},
+                { "l|listdb" , "List of databases separated by EOF", l => { listDatabases = true; }},
                 { "h|?|help", "show help text", h => { verbose = true; }},
             };
             if(args == null || args.Length == 0) {
@@ -99,7 +114,7 @@ namespace MindTouch.Data.Db {
 
                 // Check Arguments
                 CheckArg(updateDLL, "No DLL file was specified");
-                if(!string.IsNullOrEmpty(dbname)) {
+                if(!listDatabases) {
                     CheckArg(dbpassword, string.Format("No Database password specified for database {0}", dbname));
                 }
 
@@ -110,11 +125,14 @@ namespace MindTouch.Data.Db {
 
                 // Begin Parsing DLL
                 var dllAssembly = Assembly.LoadFile(updateDLL);
-                        
-                // Read list of databases if listDatabases is true
-                var databaseList = new List<DBConnection>();
+
+                // Instatiate Mysql Upgrade class
+                MysqlDataUpdater mysqlSchemaUpdater = null;
+
                 if(listDatabases) {
-                    
+                    // Read list of databases if listDatabases is true
+                    var databaseList = new List<DBConnection>();
+
                     // Read the db names from input
                     // format: dbname[;dbserver;dbuser;dbpassword]
                     string line = null;
@@ -124,30 +142,66 @@ namespace MindTouch.Data.Db {
                             databaseList.Add(connection);
                         }
                     }
-                }
-
-                // Instatiate Mysql Upgrade class
-                MysqlDataUpdater mysqlSchemaUpdater = null;
-                try {
-                    mysqlSchemaUpdater = new MysqlDataUpdater(dbserver, dbport, dbname, dbusername, dbpassword, targetVersion);
-                    if(sourceVersion != null) {
-                        mysqlSchemaUpdater.SourceVersion = sourceVersion;
+                    foreach(var db in databaseList) {
+                        if(mysqlSchemaUpdater == null) {
+                            try {
+                                mysqlSchemaUpdater = new MysqlDataUpdater(db.dbServer, dbport, db.dbName, db.dbUsername, db.dbPassword, targetVersion);
+                                if(sourceVersion != null) {
+                                    mysqlSchemaUpdater.SourceVersion = sourceVersion;
+                                }
+                            } catch(VersionInfoException) {
+                                PrintErrorAndExit("You entered an incorrect version numbner.");
+                            } catch(Exception ex) {
+                                
+                                // If there is any problem creating the connection we will just keep going
+                                errors++;
+                                errorStrings.Add(string.Format("There was an error connecting to database {0} on {1}", db.dbName, db.dbServer));
+                                continue;
+                            }
+                        } else {
+                            try {
+                                mysqlSchemaUpdater.ChangeDatabase(db.dbServer, dbport, db.dbName, db.dbUsername, db.dbPassword);
+                            } catch (Exception ex) {
+                                errors++;
+                                errorStrings.Add(string.Format("There was an error connecting to database {0} on {1}", db.dbName, db.dbServer));
+                                continue;
+                            }
+                        }
+                        if(verbose) {
+                            Console.WriteLine(string.Format("\n--- Updating database {0} on server {1}", db.dbName, db.dbServer));
+                        }
+                        
+                        // Run methods on database
+                        RunUpdate(mysqlSchemaUpdater, dllAssembly, customMethods, targetVersion, verbose, dryrun);
                     }
-                } catch(VersionInfoException) {
-                    PrintErrorAndExit("You entered an incorrect version numner.");
+                } else {
+                    try {
+                        mysqlSchemaUpdater = new MysqlDataUpdater(dbserver, dbport, dbname, dbusername, dbpassword, targetVersion);
+                        if(sourceVersion != null) {
+                            mysqlSchemaUpdater.SourceVersion = sourceVersion;
+                        }
+                    } catch(VersionInfoException) {
+                        PrintErrorAndExit("You entered an incorrect version numner.");
+                    }
+
+                    // Run update
+                    RunUpdate(mysqlSchemaUpdater, dllAssembly, customMethods, targetVersion, verbose, dryrun);
                 }
-
-                // Run update
-                runUpdate(mysqlSchemaUpdater, dllAssembly, customMethods, targetVersion, verbose, dryrun);
-
             }
             else {
                 ShowHelp(options);
             } 
+
+            if(errors > 0) {
+                Console.WriteLine(string.Format("\nThere were {0} errors:", errors));
+                foreach(var error in errorStrings) {
+                    Console.WriteLine("---" + error);
+                }
+            }
             return exit;
         }
 
-        private static void runUpdate(MysqlDataUpdater site, Assembly dllAssembly, string customMethods,string targetVersion, bool verbose, bool dryrun) {
+        private static void RunUpdate(MysqlDataUpdater site, Assembly dllAssembly, string customMethods,string targetVersion, bool verbose, bool dryrun) {
             // Execute custom methods
             if(customMethods != null) {
                 var methods = customMethods.Split(',');
