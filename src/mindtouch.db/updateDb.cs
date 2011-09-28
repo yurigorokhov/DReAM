@@ -56,7 +56,7 @@ namespace MindTouch.Data.Db {
                 var items = configString.Split(';');
                 var con = new DBConnection();
                 con.dbName = items[0];
-                if(items.Length == 1) {
+                if(items.Length < 4) {
                     con.dbServer = defaultServer;
                     con.dbUsername = defaultUser;
                     con.dbPassword = defaultPassword;
