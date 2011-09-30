@@ -301,6 +301,11 @@ namespace MindTouch.Data {
             : base(String.Format("Version string is invalid : {0}", _versionInfo.ToString())) {}
     }
 
+    public class DataCheckException : Exception {
+        public DataCheckException(string message)
+            : base(message) {}
+    }
+
     public class NoUpgradeAttributesFound : Exception {
         public NoUpgradeAttributesFound()
             : base ("Did not find any class with DataUpgrade attribute") {}

@@ -173,7 +173,7 @@ namespace MindTouch.Data.Db {
                         }
                         
                         // Run methods on database
-                        RunUpdate(mysqlSchemaUpdater, dllAssembly, customMethods, targetVersion, verbose, dryrun);
+                        RunUpdate(mysqlSchemaUpdater, dllAssembly, customMethods, targetVersion, verbose, dryrun, checkDb);
                     }
                 } else {
                     try {
@@ -186,7 +186,7 @@ namespace MindTouch.Data.Db {
                     }
 
                     // Run update
-                    RunUpdate(mysqlSchemaUpdater, dllAssembly, customMethods, targetVersion, verbose, dryrun);
+                    RunUpdate(mysqlSchemaUpdater, dllAssembly, customMethods, targetVersion, verbose, dryrun, checkDb);
                 }
             }
             else {
@@ -203,6 +203,7 @@ namespace MindTouch.Data.Db {
         }
 
         private static void RunUpdate(MysqlDataUpdater site, Assembly dllAssembly, string customMethods,string targetVersion, bool verbose, bool dryrun, bool checkdb) {
+            
             // Execute custom methods
             if(customMethods != null && !checkdb) {
                 var methods = customMethods.Split(',');
