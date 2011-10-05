@@ -240,7 +240,7 @@ namespace MindTouch.Data.Db {
                         try {
                             site.ExecuteMethod(method);
                         } catch(Exception ex) {
-                            Console.WriteLine(ex.StackTrace);
+                            Console.WriteLine(string.Format("\n --- Error occured in method {0}: \n\n{1}", method, ex.StackTrace));
                             if(checkdb) {
                                 continue;
                             } else {
