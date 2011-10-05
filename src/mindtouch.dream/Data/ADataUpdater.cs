@@ -198,10 +198,10 @@ namespace MindTouch.Data {
                     bool isUpdateMethod;
                     if(attr.IsA<EffectiveVersionAttribute>()) {
                         version = new VersionInfo(((EffectiveVersionAttribute)attr).VersionString);
-                        isUpdateMethod = false;
+                        isUpdateMethod = true;
                     } else if(attr.IsA<DataIntegrityCheck>()) {
                         version = new VersionInfo(((DataIntegrityCheck)attr).VersionString);
-                        isUpdateMethod = true;
+                        isUpdateMethod = false;
                     } else {
                         continue;
                     }

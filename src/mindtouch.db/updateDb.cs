@@ -146,7 +146,7 @@ namespace MindTouch.Data.Db {
                     foreach(var db in databaseList) {
                         if(mysqlSchemaUpdater == null) {
                             try {
-                                mysqlSchemaUpdater = new MysqlDataUpdater(db.dbServer, dbport, db.dbName, db.dbUsername, db.dbPassword, targetVersion, checkDb);
+                                mysqlSchemaUpdater = new MysqlDataUpdater(db.dbServer, dbport, db.dbName, db.dbUsername, db.dbPassword, targetVersion);
                                 if(sourceVersion != null) {
                                     mysqlSchemaUpdater.SourceVersion = sourceVersion;
                                 }
@@ -161,7 +161,7 @@ namespace MindTouch.Data.Db {
                             }
                         } else {
                             try {
-                                mysqlSchemaUpdater.ChangeDatabase(db.dbServer, dbport, db.dbName, db.dbUsername, db.dbPassword, checkDb);
+                                mysqlSchemaUpdater.ChangeDatabase(db.dbServer, dbport, db.dbName, db.dbUsername, db.dbPassword);
                             } catch (Exception ex) {
                                 errors++;
                                 errorStrings.Add(string.Format("There was an error connecting to database {0} on {1}", db.dbName, db.dbServer));
@@ -177,7 +177,7 @@ namespace MindTouch.Data.Db {
                     }
                 } else {
                     try {
-                        mysqlSchemaUpdater = new MysqlDataUpdater(dbserver, dbport, dbname, dbusername, dbpassword, targetVersion, checkDb);
+                        mysqlSchemaUpdater = new MysqlDataUpdater(dbserver, dbport, dbname, dbusername, dbpassword, targetVersion);
                         if(sourceVersion != null) {
                             mysqlSchemaUpdater.SourceVersion = sourceVersion;
                         }
@@ -238,7 +238,7 @@ namespace MindTouch.Data.Db {
                             site.TestConnection();
                         }
                         try {
-                            site.ExecuteMethod(method);
+                                site.ExecuteMethod(method);
                         } catch(Exception ex) {
                             Console.WriteLine(string.Format("\n --- Error occured in method {0}: \n\n{1}", method, ex.StackTrace));
                             if(checkdb) {

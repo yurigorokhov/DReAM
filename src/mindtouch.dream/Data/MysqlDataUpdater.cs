@@ -29,7 +29,7 @@ namespace MindTouch.Data {
         private DataCatalog _dataCatalog;
         
         //--- Constructors ---
-        public MysqlDataUpdater(string server, int port, string dbname, string dbuser, string dbpassword, string version, bool readOnly) {
+        public MysqlDataUpdater(string server, int port, string dbname, string dbuser, string dbpassword, string version) {
             if(string.IsNullOrEmpty(version)) {
                 _targetVersion = null;
             } else {
@@ -41,7 +41,7 @@ namespace MindTouch.Data {
             
             // initialize the data catalog
             var dataFactory = new DataFactory("MySql.Data", "?");
-            var connectionString = BuildConnectionString(server, port, dbname, dbuser, dbpassword, readOnly);
+            var connectionString = BuildConnectionString(server, port, dbname, dbuser, dbpassword);
             _dataCatalog = new DataCatalog(dataFactory, connectionString);
             _dataCatalog.TestConnection();
         }
@@ -51,9 +51,9 @@ namespace MindTouch.Data {
             _dataCatalog.TestConnection();
         }
 
-        public void ChangeDatabase(string server, int port, string dbname, string dbuser, string dbpassword, bool readOnly) {
+        public void ChangeDatabase(string server, int port, string dbname, string dbuser, string dbpassword) {
             var dataFactory = new DataFactory("Mysql.Data", "?");
-            var connectionString = BuildConnectionString(server, port, dbname, dbuser, dbpassword, readOnly);
+            var connectionString = BuildConnectionString(server, port, dbname, dbuser, dbpassword);
             _dataCatalog = new DataCatalog(dataFactory, connectionString);
             _dataCatalog.TestConnection();
         }
@@ -62,16 +62,13 @@ namespace MindTouch.Data {
             return Activator.CreateInstance(dataUpgradeType, _dataCatalog);
         }
 
-        private string BuildConnectionString(string server, int port, string dbname, string dbuser, string dbpassword, bool readOnly) {
+        private string BuildConnectionString(string server, int port, string dbname, string dbuser, string dbpassword) {
             StringBuilder connectionString = new StringBuilder();
             connectionString.AppendFormat("Server={0};", server);
             connectionString.AppendFormat("Port={0};", port);
             connectionString.AppendFormat("Database={0};", dbname);
             connectionString.AppendFormat("User Id={0};", dbuser);
             connectionString.AppendFormat("Password={0};", dbpassword);
-            if(readOnly) {
-                connectionString.Append("readonly=1");
-            }
             return connectionString.ToString();
         }
     }
