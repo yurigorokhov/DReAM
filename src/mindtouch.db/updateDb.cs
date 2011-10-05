@@ -237,7 +237,16 @@ namespace MindTouch.Data.Db {
                             System.Threading.Thread.Sleep(5000);
                             site.TestConnection();
                         }
-                        site.ExecuteMethod(method);
+                        try {
+                            site.ExecuteMethod(method);
+                        } catch(Exception ex) {
+                            Console.WriteLine(ex.StackTrace);
+                            if(checkdb) {
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
                     }
                 }
             }
