@@ -305,7 +305,7 @@ namespace MindTouch.Data {
             if(_methodList.Count == 0) {
                 throw new NoMethodsLoaded();
             }
-            var methods = (from method in _methodList where method.GetMethodInfo.Name.EqualsInvariant(name) select method).ToList();
+            var methods = (from method in _methodList where method.GetMethodInfo.Name.EqualsInvariant(name) select method);
             return methods.First();
         }
     }

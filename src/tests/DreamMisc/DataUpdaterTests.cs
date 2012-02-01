@@ -25,6 +25,7 @@ using System.Linq;
 using System.Text;
 using NUnit.Framework;
 using System.Reflection;
+using log4net;
 
 using MindTouch.Dream;
 using MindTouch.Data;
@@ -52,7 +53,18 @@ namespace MindTouch.Dream.Test {
     [DataUpgrade]
     internal class DummyUpgradeClass {
 
-        public void CustomMethod1() { }
+        private static readonly ILog _log = LogUtils.CreateLog(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+
+        public void CustomMethod1() {
+            _log.Debug("Executing CustomMethod1");
+        }
+
+        public void CustomMethod2(params string[] args) {
+            _log.Debug("Executing CustomMethod2 with params: ");
+            foreach(var argument in args) {
+                _log.Debug("arg: " + argument);
+            }
+        }
 
         [EffectiveVersion("10.0.0")]
         public void UpgradeMethod1() { }
@@ -115,7 +127,37 @@ namespace MindTouch.Dream.Test {
 
             // Check that version array is in sorted order
             for(int i = 0; i < versionArray.Count() - 1; i++) {
-                Assert.IsTrue(versionArray[i].CompareTo(versionArray[i+1]).Change == VersionChange.None || versionArray[i].CompareTo(versionArray[i + 1]).Change == VersionChange.Downgrade, "Methods are being returned in the wrong order");
+                var compare = versionArray[i].CompareTo(versionArray[i + 1]).Change;
+                Assert.IsTrue(compare == VersionChange.None || compare == VersionChange.Downgrade, "Methods are being returned in the wrong order");
+            }
+        }
+
+        [Test]
+        public void invoke_custom_method() {
+            _dataUpdater.ExecuteCustomMethod("CustomMethod1", _testAssembly);
+        }
+
+        [Test]
+        public void invoke_custom_method_with_parameters() {
+            var parameters = new string[4] {"--param1", "value1", "--param2", "value2"};
+            _dataUpdater.ExecuteCustomMethod("CustomMethod2", _testAssembly, parameters);
+        }
+
+        [Test]
+        public void run_methods_up_to_certain_version() {
+            string version = "10.0.1";
+            var maxVersion = new VersionInfo(version);
+            var dataUpdater = new TestDataUpdater(version);
+            dataUpdater.LoadMethods(_testAssembly);
+            var methods = (from method in dataUpdater.GetMethods() 
+                           select dataUpdater.GetMethodInfo(method));
+            foreach(var method in methods) {
+                var attributes = method.GetMethodInfo.GetCustomAttributes(false);
+                Assert.IsTrue(attributes.Count() > 0, string.Format("No Attributes were found in method {0}", method.GetMethodInfo.Name));
+                var currentVersion = new VersionInfo(((EffectiveVersionAttribute)attributes.First()).VersionString);
+                var compare = currentVersion.CompareTo(maxVersion).Change;
+                Assert.IsTrue(compare == VersionChange.None || compare == VersionChange.Downgrade, 
+                    string.Format("Method {0} has a version too high to be in this set", method.GetMethodInfo.Name));
             }
         }
     }
