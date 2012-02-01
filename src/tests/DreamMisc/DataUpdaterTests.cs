@@ -53,45 +53,92 @@ namespace MindTouch.Dream.Test {
     [DataUpgrade]
     internal class DummyUpgradeClass {
 
-        private static readonly ILog _log = LogUtils.CreateLog(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        //--- Types ---
+        public struct Method : IComparable<Method> {
+            public string _methodName;
+            public VersionInfo _version;
+            public string[] _args;
 
-        public void CustomMethod1() {
-            _log.Debug("Executing CustomMethod1");
-        }
+            public Method(string name, VersionInfo version) {
+                _methodName = name;
+                _version = version;
+                _args = null;
+            }
 
-        public void CustomMethod2(params string[] args) {
-            _log.Debug("Executing CustomMethod2 with params: ");
-            foreach(var argument in args) {
-                _log.Debug("arg: " + argument);
+            public Method(string name, VersionInfo version, string[] args) {
+                _methodName = name;
+                _version = version;
+                _args = args;
+            }
+
+            public int CompareTo(Method other) {
+                var otherVersion = other._version;
+                var change = _version.CompareTo(otherVersion).Change;
+                switch(change) {
+                case VersionChange.None:
+                    return _methodName.CompareTo(other._methodName);
+                case VersionChange.Upgrade:
+                    return 1;
+                default:
+                    return -1;
+                }
             }
         }
 
+        public static List<Method> ExecutedMethods = new List<Method>();
+
+        public void CustomMethod1() {
+            ExecutedMethods.Add(new Method("CustomMethod1", null));
+        }
+
+        public void CustomMethod2(params string[] args) {
+            ExecutedMethods.Add(new Method("CustomMethod2", null, args));
+        }
+
         [DataIntegrityCheck("11.0.0")]
-        public void DataIntegrityMethod1() { }
+        public void DataIntegrityMethod1() {
+            ExecutedMethods.Add(new Method("DataIntegrityMethod1", new VersionInfo("11.0.0")));
+        }
 
         [EffectiveVersion("10.0.0")]
-        public void UpgradeMethod1() { }
+        public void UpgradeMethod1() {
+            ExecutedMethods.Add(new Method("UpgradeMethod1", new VersionInfo("10.0.0")));
+        }
 
         [EffectiveVersion("10.0.1")]
-        public void UpgradeMethod2() { }
+        public void UpgradeMethod2() {
+            ExecutedMethods.Add(new Method("UpgradeMethod2", new VersionInfo("10.0.1")));
+        }
 
         [EffectiveVersion("10.0.0")]
-        public void UpgradeMethod3() { }
+        public void UpgradeMethod3() {
+            ExecutedMethods.Add(new Method("UpgradeMethod3", new VersionInfo("10.0.0")));
+        }
 
         [EffectiveVersion("9.0.0")]
-        public void UpgradeMethod4() { }
+        public void UpgradeMethod4() {
+            ExecutedMethods.Add(new Method("UpgradeMethod4", new VersionInfo("9.0.0")));
+        }
 
         [EffectiveVersion("11.0.0")]
-        public void UpgradeMethod5() { }
+        public void UpgradeMethod5() {
+            ExecutedMethods.Add(new Method("UpgradeMethod5", new VersionInfo("11.0.0")));
+        }
 
         [EffectiveVersion("11.3.0")]
-        public void UpgradeMethod6() { }
+        public void UpgradeMethod6() {
+            ExecutedMethods.Add(new Method("UpgradeMethod6", new VersionInfo("11.3.0")));
+        }
 
         [EffectiveVersion("9.8.0")]
-        public void UpgradeMethod7() { }
+        public void UpgradeMethod7() {
+            ExecutedMethods.Add(new Method("UpgradeMethod7", new VersionInfo("9.8.0")));
+        }
 
         [EffectiveVersion("11.0.3")]
-        public void UpgradeMethod8() { }
+        public void UpgradeMethod8() {
+            ExecutedMethods.Add(new Method("UpgradeMethod8", new VersionInfo("11.0.3")));
+        }
     }
 
     [TestFixture]
@@ -109,6 +156,11 @@ namespace MindTouch.Dream.Test {
             _testAssembly = Assembly.GetExecutingAssembly();
             _dataUpdater = new TestDataUpdater("100.0.0");
             _dataUpdater.LoadMethods(_testAssembly);
+        }
+
+        [SetUp]
+        public void Setup() {
+            DummyUpgradeClass.ExecutedMethods.Clear();
         }
 
         [Test]
