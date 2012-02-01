@@ -66,6 +66,9 @@ namespace MindTouch.Dream.Test {
             }
         }
 
+        [DataIntegrityCheck("11.0.0")]
+        public void DataIntegrityMethod1() { }
+
         [EffectiveVersion("10.0.0")]
         public void UpgradeMethod1() { }
 
@@ -86,6 +89,9 @@ namespace MindTouch.Dream.Test {
 
         [EffectiveVersion("9.8.0")]
         public void UpgradeMethod7() { }
+
+        [EffectiveVersion("11.0.3")]
+        public void UpgradeMethod8() { }
     }
 
     [TestFixture]
@@ -106,9 +112,17 @@ namespace MindTouch.Dream.Test {
         }
 
         [Test]
-        public void load_methods_using_reflection() {
+        public void load_methods_and_execute_using_reflection() {
             var methods = _dataUpdater.GetMethods();
             Assert.IsTrue(methods.Count > 0, "No methods were loaded");
+            foreach(var method in methods) {
+                _dataUpdater.ExecuteMethod(method);
+            }
+        }
+
+        [Test]
+        public void load_and_execute() {
+            _dataUpdater.LoadMethodsAndExecute(_testAssembly);
         }
 
         [Test]
@@ -116,6 +130,7 @@ namespace MindTouch.Dream.Test {
             
             // Load versions of methods into an array
             var methods = _dataUpdater.GetMethods();
+            Assert.IsTrue(methods.Count > 0, "There were no methods found");
             var versionArray = new VersionInfo[methods.Count];
             for(int i = 0; i < methods.Count; i++) {
                 var methodInfo = _dataUpdater.GetMethodInfo(methods[i]);
@@ -151,6 +166,7 @@ namespace MindTouch.Dream.Test {
             dataUpdater.LoadMethods(_testAssembly);
             var methods = (from method in dataUpdater.GetMethods() 
                            select dataUpdater.GetMethodInfo(method));
+            Assert.IsTrue(methods.Count() > 0, "There were no methods found");
             foreach(var method in methods) {
                 var attributes = method.GetMethodInfo.GetCustomAttributes(false);
                 Assert.IsTrue(attributes.Count() > 0, string.Format("No Attributes were found in method {0}", method.GetMethodInfo.Name));
@@ -159,6 +175,44 @@ namespace MindTouch.Dream.Test {
                 Assert.IsTrue(compare == VersionChange.None || compare == VersionChange.Downgrade, 
                     string.Format("Method {0} has a version too high to be in this set", method.GetMethodInfo.Name));
             }
+        }
+
+        [Test]
+        public void run_methods_with_source_and_target_version() {
+            string targetVersion = "11.0.3";
+            string sourceVersion = "10.0.0";
+            var maxVersion = new VersionInfo(targetVersion);
+            var minVersion = new VersionInfo(sourceVersion);
+            var dataUpdater = new TestDataUpdater(targetVersion);
+            dataUpdater.SourceVersion = sourceVersion;
+            dataUpdater.LoadMethods(_testAssembly);
+            var methods = (from method in dataUpdater.GetMethods()
+                           select dataUpdater.GetMethodInfo(method));
+            Assert.IsTrue(methods.Count() > 0, "There were no methods found");
+            foreach(var method in methods) {
+                var attributes = method.GetMethodInfo.GetCustomAttributes(false);
+                Assert.IsTrue(attributes.Count() > 0, string.Format("No Attributes were found in method {0}", method.GetMethodInfo.Name));
+                var currentVersion = new VersionInfo(((EffectiveVersionAttribute)attributes.First()).VersionString);
+                var compareMax = currentVersion.CompareTo(maxVersion).Change;
+                var compareMin = currentVersion.CompareTo(minVersion).Change;
+                Assert.IsTrue( (compareMax == VersionChange.None || compareMax == VersionChange.Downgrade)
+                             && (compareMin == VersionChange.None || compareMin == VersionChange.Upgrade),
+                    string.Format("Method {0} has a version that should not be in this set", method.GetMethodInfo.Name));
+            }
+        }
+
+        [Test]
+        public void get_and_execute_data_integrity_methods() {
+            var methods = (from method in _dataUpdater.GetDataIntegrityMethods()
+                           select _dataUpdater.GetMethodInfo(method));
+            Assert.IsTrue(methods.Count() > 0, "There were no data integrity methods found");
+            foreach(var method in methods) {
+                var attributes = method.GetMethodInfo.GetCustomAttributes(false);
+                Assert.IsTrue(attributes.Count() > 0, "method does not have any attributes");
+                Assert.IsTrue(attributes.First() is DataIntegrityCheck, string.Format("Method {0} does not have proper data integrity attribute", method.GetMethodInfo.Name));
+                _dataUpdater.ExecuteMethod(method.GetMethodInfo.Name);
+            }
+
         }
     }
 }
