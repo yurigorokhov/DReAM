@@ -170,6 +170,10 @@ namespace MindTouch.Dream.Test {
             foreach(var method in methods) {
                 _dataUpdater.ExecuteMethod(method);
             }
+            Assert.AreEqual(methods.Count, DummyUpgradeClass.ExecutedMethods.Count, "The number of methods to be executed does not match.");
+            for(int i = 0; i < methods.Count; i++) {
+                Assert.AreEqual(methods[i], DummyUpgradeClass.ExecutedMethods[i]._methodName, "Method name that was executed does not match");
+            }
         }
 
         [Test]
@@ -180,34 +184,31 @@ namespace MindTouch.Dream.Test {
         [Test]
         public void loaded_methods_proper_order() {
             
-            // Load versions of methods into an array
+            // Execute all methods
             var methods = _dataUpdater.GetMethods();
             Assert.IsTrue(methods.Count > 0, "There were no methods found");
-            var versionArray = new VersionInfo[methods.Count];
-            for(int i = 0; i < methods.Count; i++) {
-                var methodInfo = _dataUpdater.GetMethodInfo(methods[i]);
-                var attributes = methodInfo.GetMethodInfo.GetCustomAttributes(false);
-                Assert.IsTrue(attributes.Count() > 0, String.Format("Method {0} does not have any attributes", methodInfo.GetMethodInfo.Name));
-                Assert.IsTrue(attributes.First() is EffectiveVersionAttribute, String.Format("Method {0} does not have the proper attribute", methodInfo.GetMethodInfo.Name));
-                versionArray[i] = new VersionInfo(((EffectiveVersionAttribute)attributes.First()).VersionString);
+            foreach(var method in methods) {
+                _dataUpdater.ExecuteMethod(method);
             }
 
-            // Check that version array is in sorted order
-            for(int i = 0; i < versionArray.Count() - 1; i++) {
-                var compare = versionArray[i].CompareTo(versionArray[i + 1]).Change;
-                Assert.IsTrue(compare == VersionChange.None || compare == VersionChange.Downgrade, "Methods are being returned in the wrong order");
+            // Check that methods were executed in proper order
+            for(int i = 1; i < DummyUpgradeClass.ExecutedMethods.Count; i++) {
+                Assert.IsTrue(DummyUpgradeClass.ExecutedMethods[i].CompareTo(DummyUpgradeClass.ExecutedMethods[i - 1]) == 1, "Ordering of methods is wrong.");
             }
         }
 
         [Test]
         public void invoke_custom_method() {
             _dataUpdater.ExecuteCustomMethod("CustomMethod1", _testAssembly);
+            Assert.AreEqual("CustomMethod1", DummyUpgradeClass.ExecutedMethods.First()._methodName, "The wrong method was executed");
         }
 
         [Test]
         public void invoke_custom_method_with_parameters() {
             var parameters = new string[4] {"--param1", "value1", "--param2", "value2"};
             _dataUpdater.ExecuteCustomMethod("CustomMethod2", _testAssembly, parameters);
+            Assert.AreEqual("CustomMethod2", DummyUpgradeClass.ExecutedMethods.First()._methodName, "The wrong method was executed");
+            Assert.AreEqual(parameters, DummyUpgradeClass.ExecutedMethods.First()._args, "The proper arguments were not passed in to the custom method");
         }
 
         [Test]
@@ -215,17 +216,10 @@ namespace MindTouch.Dream.Test {
             string version = "10.0.1";
             var maxVersion = new VersionInfo(version);
             var dataUpdater = new TestDataUpdater(version);
-            dataUpdater.LoadMethods(_testAssembly);
-            var methods = (from method in dataUpdater.GetMethods() 
-                           select dataUpdater.GetMethodInfo(method));
-            Assert.IsTrue(methods.Count() > 0, "There were no methods found");
-            foreach(var method in methods) {
-                var attributes = method.GetMethodInfo.GetCustomAttributes(false);
-                Assert.IsTrue(attributes.Count() > 0, string.Format("No Attributes were found in method {0}", method.GetMethodInfo.Name));
-                var currentVersion = new VersionInfo(((EffectiveVersionAttribute)attributes.First()).VersionString);
-                var compare = currentVersion.CompareTo(maxVersion).Change;
-                Assert.IsTrue(compare == VersionChange.None || compare == VersionChange.Downgrade, 
-                    string.Format("Method {0} has a version too high to be in this set", method.GetMethodInfo.Name));
+            dataUpdater.LoadMethodsAndExecute(_testAssembly);
+            foreach(var method in DummyUpgradeClass.ExecutedMethods) { 
+                var maxCompare = method._version.CompareTo(maxVersion).Change;
+                Assert.IsTrue(maxCompare == VersionChange.Downgrade || maxCompare == VersionChange.None, string.Format("Version is larger than {0}", version));
             }
         }
 
@@ -237,19 +231,12 @@ namespace MindTouch.Dream.Test {
             var minVersion = new VersionInfo(sourceVersion);
             var dataUpdater = new TestDataUpdater(targetVersion);
             dataUpdater.SourceVersion = sourceVersion;
-            dataUpdater.LoadMethods(_testAssembly);
-            var methods = (from method in dataUpdater.GetMethods()
-                           select dataUpdater.GetMethodInfo(method));
-            Assert.IsTrue(methods.Count() > 0, "There were no methods found");
-            foreach(var method in methods) {
-                var attributes = method.GetMethodInfo.GetCustomAttributes(false);
-                Assert.IsTrue(attributes.Count() > 0, string.Format("No Attributes were found in method {0}", method.GetMethodInfo.Name));
-                var currentVersion = new VersionInfo(((EffectiveVersionAttribute)attributes.First()).VersionString);
-                var compareMax = currentVersion.CompareTo(maxVersion).Change;
-                var compareMin = currentVersion.CompareTo(minVersion).Change;
-                Assert.IsTrue( (compareMax == VersionChange.None || compareMax == VersionChange.Downgrade)
-                             && (compareMin == VersionChange.None || compareMin == VersionChange.Upgrade),
-                    string.Format("Method {0} has a version that should not be in this set", method.GetMethodInfo.Name));
+            dataUpdater.LoadMethodsAndExecute(_testAssembly);
+            foreach(var method in DummyUpgradeClass.ExecutedMethods) {
+                var maxCompare = method._version.CompareTo(maxVersion).Change;
+                var minCompare = method._version.CompareTo(minVersion).Change;
+                Assert.IsTrue(maxCompare == VersionChange.Downgrade || maxCompare == VersionChange.None, string.Format("Version is larger than {0}", targetVersion));
+                Assert.IsTrue(minCompare == VersionChange.Upgrade || minCompare == VersionChange.None, string.Format("Version is not larger than source version {0}", sourceVersion));
             }
         }
 
