@@ -236,21 +236,21 @@ namespace MindTouch.Dream.Http {
                 }
 
                 // copy data
-                using(outStream) {
-                    Result<long> res;
-                    activity("pre yield CopyStream");
-                    yield return res = request.ToStream().CopyToStream(outStream, request.ContentLength, new Result<long>(TimeSpan.MaxValue)).Catch();
-                    activity("post yield CopyStream");
-                    if(res.HasException) {
-                        activity("pre HandleResponse 3");
-                        if(!HandleResponse(activity, res.Exception, null, response)) {
-                            _log.ErrorExceptionMethodCall(res.Exception, "HandleInvoke@AsyncUtil.CopyStream", verb, uri);
-                            try {
-                                httpRequest.Abort();
-                            } catch { }
-                        }
-                        yield break;
+                //(yurig): HttpWebRequest does some internal memory buffering, therefore copying the data syncronously is acceptable.
+                activity("pre CopyStream");
+                try {
+                    request.ToStream().CopyTo(outStream);
+                    activity("post CopyStream");
+                } catch (Exception e) {
+                    activity("post CopyStream");
+                    activity("pre HandleResponse 3");
+                    if(!HandleResponse(activity, e, null, response)) {
+                        _log.ErrorExceptionMethodCall(e, "HandleInvoke@AsyncUtil.CopyStream", verb, uri);
+                        try {
+                            httpRequest.Abort();
+                        } catch { }
                     }
+                    yield break;
                 }
             }
             request = null;
