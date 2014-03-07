@@ -215,8 +215,6 @@ namespace MindTouch.Collections {
                 TopData newTopVal = new TopData(curTop.Tag + 1, curTop.Node, curTop.Index);
                 if(SysUtil.CAS(ref _top, curTop, newTopVal)) {
 
-                    // TODO (steveb): clear out the entry we read, so the GC can reclaim it
-
                     // free old node if needed
                     if(!ReferenceEquals(curBottom.Node, newBottom.Node)) {
                         newBottom.Node.Prev = null;

@@ -676,6 +676,7 @@ namespace MindTouch.Dream.Test {
                 }
             }
 
+            //TODO: need to fix these tests
             //result.WithCleanup(r => { ++canceled; canceldResult = r; wait.Set(); });
             result.WhenDone(
                 v => { ++success; wait.Set(); },
