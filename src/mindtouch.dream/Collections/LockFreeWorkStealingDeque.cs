@@ -30,7 +30,7 @@ namespace MindTouch.Collections {
     /// Distributed Computing, Volume 18, Issue 3 (February 2006), pp189-207, ISSN:0178-2770 
     /// </summary>
     /// <typeparam name="T">Collection item type.</typeparam>
-    public sealed class WorkStealingDeque<T> {
+    public sealed class WorkStealingDeque<T> where T: class {
 
         //--- Constants ---
         private const int DEFAULT_CAPACITY = 32;
@@ -285,8 +285,7 @@ namespace MindTouch.Collections {
 
             // try updating _top using CAS
             if(SysUtil.CAS(ref _top, curTop, newTop)) {
-
-                // TODO (steveb): clear out the entry we read, so the GC can reclaim it
+                SysUtil.CAS(ref curTop.Node.Data[curTop.Index], retVal, default(T));
 
                 // free old node
                 curTop.Node.Next = null;
