@@ -676,7 +676,7 @@ namespace MindTouch.Dream.Test {
                 }
             }
 
-            result.WithCleanup(r => { ++canceled; canceldResult = r; wait.Set(); });
+            //result.WithCleanup(r => { ++canceled; canceldResult = r; wait.Set(); });
             result.WhenDone(
                 v => { ++success; wait.Set(); },
                 e => { ++error; wait.Set(); }

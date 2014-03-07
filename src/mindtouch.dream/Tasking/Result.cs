@@ -191,11 +191,6 @@ namespace MindTouch.Tasking {
         /// </summary>
         public abstract object UntypedValue { get; }
 
-        /// <summary>
-        /// <see langword="True"/> if the result has a clean-up handler.
-        /// </summary>
-        protected abstract bool HasCleanup { get; }
-
         //--- Properties ---
 
         /// <summary>
@@ -295,19 +290,6 @@ namespace MindTouch.Tasking {
         /// </summary>
         protected bool HasCompletion { get { return _completion != null; } }
 
-        //--- Abstract Methods ---
-
-        /// <summary>
-        /// Unimplemented hook for clean-up being canceled.
-        /// </summary>
-        protected abstract void CallCleanupCanceled();
-
-        /// <summary>
-        /// Unimplemented hook for performing clean-up on error.
-        /// </summary>
-        /// <param name="exception">Exception causing the clean-up event.</param>
-        protected abstract void CallCleanupError(Exception exception);
-
         //--- Methods ---
         #region --- Core Methods ---
 
@@ -393,13 +375,7 @@ namespace MindTouch.Tasking {
                         // replace current status with real outcome since there isn't a callback yet to observe the previous one
                         _exception = exception;
                         _state = ResultState.Error;
-
-                        // nothing further to do since we don't have a callback yet
-                        return;
                     }
-
-                    // call cleanup callback
-                    CallCleanupError(exception);
                     return;
                 case ResultState.ConfirmedCancel:
                 case ResultState.Error:
@@ -468,16 +444,6 @@ namespace MindTouch.Tasking {
 
                     // replace current status with real outcome since there isn't a callback yet to observe the previous one
                     _state = ResultState.ConfirmedCancel;
-
-                    // check if completion has been triggered yet
-                    if(!HasCompletion) {
-
-                        // nothing further to do since we don't have a callback yet
-                        return;
-                    }
-
-                    // call cleanup callback
-                    CallCleanupCanceled();
                     return;
                 case ResultState.ConfirmedCancel:
                 case ResultState.Error:
@@ -539,11 +505,6 @@ namespace MindTouch.Tasking {
                         // invoke completion callback since we already have a state
                         CallCompletion();
                     }
-
-                    // check if state is a cancelation confirmation; if so, we still need to call the cleanup callback
-                    if(_state == ResultState.ConfirmedCancel) {
-                        CallCleanupCanceled();
-                    }
                     return true;
                 }
 
@@ -559,7 +520,7 @@ namespace MindTouch.Tasking {
         private void InitTaskEnv(bool alwaysInitialize) {
 
             // check if environment is not yet initialized; unless requested, we only initialize _env if we also have a _cleanup callback
-            if(_env == null && (alwaysInitialize || HasCleanup)) {
+            if(_env == null && alwaysInitialize) {
                 _env = TaskEnv.Clone();
             }
         }
@@ -716,13 +677,6 @@ namespace MindTouch.Tasking {
     /// </summary>
     public sealed class Result : AResult {
 
-        //--- Class Methods ---
-        private static void CleanupCalled(Result result) { }
-
-        //--- Fields ---
-        private Action<Result> _cleanupCallback;
-        private Result _cleanupValue;
-
         //--- Constructors ---
 
         /// <summary>
@@ -761,134 +715,8 @@ namespace MindTouch.Tasking {
         /// </summary>
         public override object UntypedValue { get { throw new InvalidOperationException("Result has 'void' as value type."); } }
 
-        /// <summary>
-        /// <see langword="True"/> if the instance has a clean-up callback.
-        /// </summary>
-        protected override bool HasCleanup { get { return (_cleanupCallback != null); } }
-
         //--- Methods ---
         #region --- Core Methods ---
-
-        /// <summary>
-        /// Register a clean-up callback to allow disposal of <see cref="IDisposable"/> resources used in invocation.
-        /// </summary>
-        /// <remarks>
-        /// Doing clean-up in <see cref="WhenDone(System.Action{MindTouch.Tasking.Result})"/> is not safe, since the completion
-        /// may have been triggered by a cancel, while the the invokee has not acknowledged the cancel and is still using the 
-        /// resource.
-        /// </remarks>
-        /// <param name="callback">Callback action on completion of the invokee.</param>
-        /// <returns>The current result index.</returns>
-        public Result WithCleanup(Action<Result> callback) {
-            if(callback == null) {
-                throw new ArgumentNullException("callback");
-            }
-            lock(this) {
-                if(HasCompletion) {
-                    throw new InvalidOperationException("Cleanup callback can no longer be changed");
-                }
-                if(_cleanupCallback != null) {
-                    throw new InvalidOperationException("async operation already has a cleanup callback");
-                }
-
-                // TODO (arnec): this needs to go against the environment of the cleanup (see CallCleanup)
-                _env.Acquire();
-                _cleanupCallback = callback;
-
-                // check if we have a clean-up value already
-                if(_cleanupValue != null) {
-                    _env.Invoke(_cleanupCallback, _cleanupValue.IsCanceled ? null : _cleanupValue);
-                    _cleanupCallback = CleanupCalled;
-                }
-            }
-            return this;
-        }
-
-        /// <summary>
-        /// Try to call the clean-up callback on result cancelation.
-        /// </summary>
-        protected override void CallCleanupCanceled() {
-
-            // check if this is the second attempt to create a canceled result
-            if(_cleanupValue != null) {
-                throw new InvalidOperationException("async operation already has a value to clean up");
-            }
-
-            // check if cleanup was already called
-            if(_cleanupCallback == CleanupCalled) {
-                throw new InvalidOperationException("async operation was already cleaned up");
-            }
-
-            // TODO (arnec): Cleanup shouldn't really be on the Result env
-            // when this is changed, also change the _env.Acquire in WithCleanup()
-            _cleanupValue = new Result(TimeSpan.MaxValue, TaskEnv.None);
-            _cleanupValue.SetStateCancel(null);
-
-            // check if we have a cleanup callback to invoke
-            if(_cleanupCallback != null) {
-                _env.Invoke(_cleanupCallback, null);
-                _cleanupCallback = CleanupCalled;
-            }
-        }
-
-        /// <summary>
-        /// Try to call the clean-up callback on result error.
-        /// </summary>
-        /// <param name="exception">Exception instance that caused the error state transition.</param>
-        protected override void CallCleanupError(Exception exception) {
-
-            // check if this is the second attempt to create a canceled result
-            if(_cleanupValue != null) {
-                throw new InvalidOperationException("async operation already has a value to clean up");
-            }
-
-            // check if cleanup was already called
-            if(_cleanupCallback == CleanupCalled) {
-                throw new InvalidOperationException("async operation was already cleaned up");
-            }
-
-            // TODO (arnec): Cleanup shouldn't really be on the Result env
-            // when this is changed, also change the _env.Acquire in WithCleanup()
-            _cleanupValue = new Result(TimeSpan.MaxValue, TaskEnv.None);
-            _cleanupValue.SetStateError(exception);
-
-            // check if we have a cleanup callback to invoke
-            if(_cleanupCallback != null) {
-                _env.Invoke(_cleanupCallback, _cleanupValue.IsCanceled ? null : _cleanupValue);
-                _cleanupCallback = CleanupCalled;
-            }
-        }
-
-        private bool CallCleanupValue(bool throwOnInvalidState) {
-
-            // check if this is the second attempt to create a canceled result
-            if(_cleanupValue != null) {
-                if(!throwOnInvalidState) {
-                    return false;
-                }
-                throw new InvalidOperationException("async operation already has a value to clean up");
-            }
-
-            // check if cleanup was already called
-            if(_cleanupCallback == CleanupCalled) {
-                if(!throwOnInvalidState) {
-                    return false;
-                }
-                throw new InvalidOperationException("async operation was already cleaned up");
-            }
-
-            // TODO (arnec): Cleanup shouldn't really be on the Result env
-            // when this is changed, also change the _env.Acquire in WithCleanup()
-            _cleanupValue = new Result(TimeSpan.MaxValue, TaskEnv.None);
-            _cleanupValue.SetStateValue(true);
-
-            // check if we have a cleanup callback to invoke
-            if(_cleanupCallback != null) {
-                _env.Invoke(_cleanupCallback, _cleanupValue.IsCanceled ? null : _cleanupValue);
-                _cleanupCallback = CleanupCalled;
-            }
-            return true;
-        }
 
         private bool SetStateValue(bool throwOnInvalidState) {
             lock(this) {
@@ -913,13 +741,8 @@ namespace MindTouch.Tasking {
                         // replace current status with real outcome since there isn't a callback yet to observe the previous one
                         Exception = null;
                         _state = ResultState.Value;
-
-                        // nothing further to do since we don't have a callback yet
-                        return true;
                     }
-
-                    // call cleanup callback
-                    return CallCleanupValue(throwOnInvalidState);
+                    return true;
                 case ResultState.ConfirmedCancel:
                 case ResultState.Error:
                 case ResultState.Value:
@@ -1048,13 +871,8 @@ namespace MindTouch.Tasking {
     /// <typeparam name="T"></typeparam>
     public sealed class Result<T> : AResult {
 
-        //--- Class Methods ---
-        private static void CleanupCalled(Result<T> result) { }
-
         //--- Fields ---
         private T _value;
-        private Action<Result<T>> _cleanupCallback;
-        private Result<T> _cleanupValue;
 
         //--- Constructors ---
 
@@ -1095,11 +913,6 @@ namespace MindTouch.Tasking {
         public override object UntypedValue { get { return Value; } }
 
         /// <summary>
-        /// <see langword="True"/> if the instance has a clean-up callback.
-        /// </summary>
-        protected override bool HasCleanup { get { return (_cleanupCallback != null); } }
-
-        /// <summary>
         /// The value set on the result on successful completion.
         /// </summary>
         public T Value {
@@ -1111,127 +924,6 @@ namespace MindTouch.Tasking {
 
         //--- Methods ---
         #region --- Core Methods ---
-
-        /// <summary>
-        /// Register a clean-up callback to allow disposal of <see cref="IDisposable"/> resources used in invocation.
-        /// </summary>
-        /// <remarks>
-        /// Doing clean-up in <see cref="WhenDone(System.Action{MindTouch.Tasking.Result{T}})"/> is not safe, since the completion
-        /// may have been triggered by a cancel, while the the invokee has not acknowledged the cancel and is still using the 
-        /// resource.
-        /// </remarks>
-        /// <param name="callback">Callback action on completion of the invokee.</param>
-        /// <returns>The current result index.</returns>
-        public Result<T> WithCleanup(Action<Result<T>> callback) {
-            if(callback == null) {
-                throw new ArgumentNullException("callback");
-            }
-            lock(this) {
-                if(HasCompletion) {
-                    throw new InvalidOperationException("Cleanup callback can no longer be changed");
-                }
-                if(_cleanupCallback != null) {
-                    throw new InvalidOperationException("async operation already has a cleanup callback");
-                }
-
-                // TODO (arnec): this needs to go against the environment of the cleanup (see CallCleanup)
-                _env.Acquire();
-                _cleanupCallback = callback;
-
-                // check if we have a clean-up value already
-                if(_cleanupValue != null) {
-                    _env.Invoke(_cleanupCallback, _cleanupValue.IsCanceled ? null : _cleanupValue);
-                    _cleanupCallback = CleanupCalled;
-                }
-            }
-            return this;
-        }
-
-        /// <summary>
-        /// Try to call the clean-up callback on result cancelation.
-        /// </summary>
-        protected override void CallCleanupCanceled() {
-
-            // check if this is the second attempt to create a canceled result
-            if(_cleanupValue != null) {
-                throw new InvalidOperationException("async operation already has a value to clean up");
-            }
-
-            // check if cleanup was already called
-            if(_cleanupCallback == CleanupCalled) {
-                throw new InvalidOperationException("async operation was already cleaned up");
-            }
-
-            // TODO (arnec): Cleanup shouldn't really be on the Result env
-            // when this is changed, also change the _env.Acquire in WithCleanup()
-            _cleanupValue = new Result<T>(TimeSpan.MaxValue, TaskEnv.None);
-            _cleanupValue.SetStateCancel(null);
-
-            // check if we have a cleanup callback to invoke
-            if(_cleanupCallback != null) {
-                _env.Invoke(_cleanupCallback, null);
-                _cleanupCallback = CleanupCalled;
-            }
-        }
-
-        /// <summary>
-        /// Try to call the clean-up callback on result error.
-        /// </summary>
-        /// <param name="exception">Exception instance that caused the error state transition.</param>
-        protected override void CallCleanupError(Exception exception) {
-
-            // check if this is the second attempt to create a canceled result
-            if(_cleanupValue != null) {
-                throw new InvalidOperationException("async operation already has a value to clean up");
-            }
-
-            // check if cleanup was already called
-            if(_cleanupCallback == CleanupCalled) {
-                throw new InvalidOperationException("async operation was already cleaned up");
-            }
-
-            // TODO (arnec): Cleanup shouldn't really be on the Result env
-            // when this is changed, also change the _env.Acquire in WithCleanup()
-            _cleanupValue = new Result<T>(TimeSpan.MaxValue, TaskEnv.None);
-            _cleanupValue.SetStateError(exception);
-
-            // check if we have a cleanup callback to invoke
-            if(_cleanupCallback != null) {
-                _env.Invoke(_cleanupCallback, _cleanupValue.IsCanceled ? null : _cleanupValue);
-                _cleanupCallback = CleanupCalled;
-            }
-        }
-
-        private bool CallCleanupValue(T value, bool throwOnInvalidState) {
-
-            // check if this is the second attempt to create a canceled result
-            if(_cleanupValue != null) {
-                if(!throwOnInvalidState) {
-                    return false;
-                }
-                throw new InvalidOperationException("async operation already has a value to clean up");
-            }
-
-            // check if cleanup was already called
-            if(_cleanupCallback == CleanupCalled) {
-                if(!throwOnInvalidState) {
-                    return false;
-                }
-                throw new InvalidOperationException("async operation was already cleaned up");
-            }
-
-            // TODO (arnec): Cleanup shouldn't really be on the Result env
-            // when this is changed, also change the _env.Acquire in WithCleanup()
-            _cleanupValue = new Result<T>(TimeSpan.MaxValue, TaskEnv.None);
-            _cleanupValue.SetStateValue(value, true);
-
-            // check if we have a cleanup callback to invoke
-            if(_cleanupCallback != null) {
-                _env.Invoke(_cleanupCallback, _cleanupValue.IsCanceled ? null : _cleanupValue);
-                _cleanupCallback = CleanupCalled;
-            }
-            return true;
-        }
 
         private bool SetStateValue(T value, bool throwOnInvalidState) {
             lock(this) {
@@ -1258,13 +950,8 @@ namespace MindTouch.Tasking {
                         Exception = null;
                         _value = value;
                         _state = ResultState.Value;
-
-                        // nothing further to do since we don't have a callback yet
-                        return true;
                     }
-
-                    // call cleanup callback
-                    return CallCleanupValue(value, throwOnInvalidState);
+                    return true;
                 case ResultState.ConfirmedCancel:
                 case ResultState.Error:
                 case ResultState.Value:
