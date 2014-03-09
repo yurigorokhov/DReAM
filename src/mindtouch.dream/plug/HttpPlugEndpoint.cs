@@ -251,6 +251,8 @@ namespace MindTouch.Dream.Http {
                         } catch { }
                     }
                     yield break;
+                } finally {
+                    outStream.Close();
                 }
             }
             request = null;
