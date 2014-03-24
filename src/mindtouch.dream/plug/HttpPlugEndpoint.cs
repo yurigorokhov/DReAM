@@ -157,6 +157,9 @@ namespace MindTouch.Dream.Http {
             httpRequest.Method = verb;
             httpRequest.Timeout = System.Threading.Timeout.Infinite;
             httpRequest.ReadWriteTimeout = System.Threading.Timeout.Infinite;
+
+            //(yurig): doing this here because ContentLength may return -1 before the stream is populated
+            var contentStream = request.ToStream();
             httpRequest.ContentLength = request.ContentLength;
 
             // Note (arnec): httpRequest AutoRedirect is disabled because Plug is responsible for it (this allows redirects to follow
@@ -240,7 +243,7 @@ namespace MindTouch.Dream.Http {
                 //(yurig): HttpWebRequest does some internal memory buffering, therefore copying the data syncronously is acceptable.
                 activity("pre CopyStream");
                 try {
-                    request.ToStream().CopyTo(outStream);
+                    contentStream.CopyTo(outStream);
                     activity("post CopyStream");
                 } catch (Exception e) {
                     activity("post CopyStream");
