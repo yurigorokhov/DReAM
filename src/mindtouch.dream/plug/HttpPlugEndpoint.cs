@@ -160,7 +160,7 @@ namespace MindTouch.Dream.Http {
 
             //(yurig): doing this here because ContentLength may return -1 before the stream is populated
             var contentStream = request.ToStream();
-            httpRequest.ContentLength = request.ContentLength;
+            httpRequest.ContentLength = Math.Max(request.ContentLength, 0);
 
             // Note (arnec): httpRequest AutoRedirect is disabled because Plug is responsible for it (this allows redirects to follow
             // the appropriate handler instead staying stuck in http end point land
